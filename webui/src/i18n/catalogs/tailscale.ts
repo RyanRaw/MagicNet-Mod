@@ -40,17 +40,29 @@ export default {
     "Use 1–63 letters, digits or hyphens, with no leading or trailing hyphen.",
     "Используйте 1–63 буквы, цифры или дефисы, без дефиса в начале и конце."
   ],
-  "请填写以 tskey-auth- 开头的 Tailscale Auth key。": [
-    "Enter a Tailscale auth key beginning with tskey-auth-.",
-    "Введите ключ Tailscale, начинающийся с tskey-auth-."
+  "请填写有效的 Auth key：官方密钥以 tskey-auth- 开头，自建服务器使用它自己签发的密钥。切换控制服务器需要新服务器签发的密钥，或先登出此设备再重新配置。": [
+    "Enter a valid auth key: official keys start with tskey-auth-, a self-hosted server issues its own keys. Switching the control server requires a key from the new server, or sign out of this device first and configure again.",
+    "Введите действительный ключ: официальные ключи начинаются с tskey-auth-, собственный сервер выдаёт свои ключи. При смене сервера управления нужен ключ от нового сервера, либо сначала выйдите на этом устройстве и настройте заново."
+  ],
+  "控制服务器必须是 https 地址，不能包含账号、查询参数或片段。": [
+    "The control server must be an https address without credentials, query or fragment.",
+    "Сервер управления должен быть https-адресом без учётных данных, параметров запроса и фрагмента."
+  ],
+  "默认使用 Tailscale 官方服务器；自建 Headscale 请填写其 https server_url。": [
+    "The official Tailscale server is used by default. For self-hosted Headscale, enter its https server_url.",
+    "По умолчанию используется официальный сервер Tailscale. Для собственного Headscale укажите его https server_url."
+  ],
+  "密钥只会发送到这个自建地址，请使用该服务器签发的 Auth key。": [
+    "The key is only sent to this self-hosted address. Use an auth key issued by that server.",
+    "Ключ отправляется только на этот собственный адрес. Используйте ключ, выданный этим сервером."
   ],
   "检测到多个 Tailscale 节点，请使用配置编辑器管理，避免修改错误的网络。": [
     "Multiple Tailscale endpoints found. Use the config editor to avoid changing the wrong network.",
     "Обнаружено несколько узлов Tailscale. Используйте редактор конфигурации, чтобы не изменить другую сеть."
   ],
-  "当前节点使用自建控制服务器，此入口不会覆盖它或向它发送 Tailscale 密钥。": [
-    "This endpoint uses a custom control server. This form will not overwrite it or send it a Tailscale key.",
-    "Этот узел использует собственный сервер управления. Форма не изменит его и не отправит ему ключ Tailscale."
+  "请先填写自建控制服务器地址，再保存到现有节点。": [
+    "Enter the self-hosted control server address before saving to the existing endpoint.",
+    "Укажите адрес собственного сервера управления перед сохранением существующего узла."
   ],
   "配置已在其他位置修改，请重新读取后再保存。": [
     "Configuration changed elsewhere. Reload it before saving.",

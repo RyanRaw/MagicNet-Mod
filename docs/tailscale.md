@@ -44,6 +44,56 @@ routing policy instead of being forced into the Tailnet endpoint.
 Use `cli health` to inspect `state_created`, `tun_ingress`, and `route_linked`. Runtime acceptance
 still uses `cli transparent status`, `cli health`, and the presence of `magicnet0`.
 
+## Self-hosted control server (Headscale)
+
+The WebUI Tailscale card exposes a **Control server** field. It defaults to the official
+`https://controlplane.tailscale.com`; entering a self-hosted Headscale `server_url` makes MagicNet
+write that value to the endpoint's `control_url`. The same value can be set in the JSON editor:
+
+```json
+{
+  "endpoints": [
+    {
+      "type": "tailscale",
+      "tag": "tailnet",
+      "auth_key": "",
+      "control_url": "https://headscale.example.com",
+      "state_directory": "",
+      "hostname": "",
+      "system_interface": false
+    }
+  ]
+}
+```
+
+Self-hosted mode keeps the same ownership rules:
+
+- the address must be a plain `https` origin (an optional path prefix is allowed); credentials,
+  query strings and fragments are rejected, and the value is stored without a trailing slash;
+- the Auth key must be issued by that Headscale instance. Official `tskey-auth-` prefixes are not
+  required, but the key still has to be a bounded, shell-safe token;
+- the browser login link is only opened when it matches the configured control server origin
+  (Headscale's `/register/...` page) or the official `https://login.tailscale.com/a/...` page;
+- the official key page and the official machine console links are hidden in self-hosted mode,
+  because they belong to a different account system;
+- clearing the field switches the endpoint back to the official control server and removes
+  `control_url`; the endpoint tag and local identity are preserved;
+- switching between control servers (official ↔ self-hosted, or between two self-hosted servers)
+  requires a new Auth key issued by the target server, because the protected key store is indexed by
+  endpoint tag only. Without a key the save is rejected; sign out of the device first to start over
+  without reusing the previous control plane's key.
+
+An existing custom endpoint is never rewritten by a submission that does not explicitly carry a
+control server value; that request fails with `custom-control` instead of silently redirecting the
+endpoint or leaking a key to a different server.
+
+MagicDNS caveat: the runtime still materializes routing and DNS for `*.ts.net`. Headscale derives
+MagicDNS names from its own `dns.base_domain`, so peer names are not `*.ts.net`. Peer IP routing
+inside `100.64.0.0/10` keeps working. For name-based access, add a DNS rule for the Headscale domain
+in the config editor that targets the module-generated server tag `<endpoint-tag>-dns` (for example
+`magicnet-tailscale-dns`). Such a custom rule counts as a custom reference, so remove it before
+using **Disable Tailscale** or **Sign out**, which refuse to silently discard user policy.
+
 ## Disable, resume, and sign out
 
 The WebUI connection card separates **Disable Tailscale** from **Sign out of this

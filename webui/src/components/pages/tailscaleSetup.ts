@@ -1,11 +1,16 @@
 /** Tailscale onboarding uses the existing private config-editor transaction. */
 export const TAILSCALE_KEYS_URL = "https://login.tailscale.com/admin/settings/keys";
 export const TAILSCALE_MACHINES_URL = "https://login.tailscale.com/admin/machines";
-const CONTROL_URL = "https://controlplane.tailscale.com";
+export const TAILSCALE_DEFAULT_CONTROL_URL = "https://controlplane.tailscale.com";
+const CONTROL_URL = TAILSCALE_DEFAULT_CONTROL_URL;
 const STATE_DIRECTORY = "/data/adb/modules/MagicNet/.state/sing-box/tailscale";
+const OFFICIAL_KEY = /^tskey-auth-[a-zA-Z0-9-]{1,240}$/;
+// Self-hosted control servers (Headscale) issue their own keys, which do not
+// use the official prefix. Accept a bounded, shell-safe token instead.
+const SELF_HOSTED_KEY = /^[A-Za-z0-9._~+/=-]{1,256}$/;
 type JsonObject = Record<string, unknown>;
 
-export type TailscaleDraft = { hostname: string; authKey: string; mode?: "key" | "browser" };
+export type TailscaleDraft = { hostname: string; authKey: string; controlUrl?: string; mode?: "key" | "browser" };
 export type TailscaleSnapshot = {
   configured: boolean;
   hostname: string;
@@ -14,7 +19,7 @@ export type TailscaleSnapshot = {
   endpointRevision: string;
   statusConfigured: boolean;
 };
-export type SetupErrorCode = "config" | "multiple" | "hostname" | "auth-key" | "conflict" | "custom-control" | "references";
+export type SetupErrorCode = "config" | "multiple" | "hostname" | "auth-key" | "control-url" | "conflict" | "custom-control" | "references";
 export class TailscaleSetupError extends Error {
   readonly code: SetupErrorCode;
   constructor(code: SetupErrorCode) {
@@ -71,6 +76,35 @@ function availableTag(config: JsonObject): string {
   return tag;
 }
 
+/**
+ * Self-hosted control servers (Headscale) are addressed by an https base URL.
+ * Reject credentials, query strings and fragments so the stored endpoint stays
+ * a plain server address that can be rendered without leaking secrets.
+ */
+export function normalizeControlUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return CONTROL_URL;
+  if (trimmed.length > 200) throw new TailscaleSetupError("control-url");
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new TailscaleSetupError("control-url");
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+    throw new TailscaleSetupError("control-url");
+  }
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+}
+
+export function isCustomControlUrl(value: string): boolean {
+  try {
+    return normalizeControlUrl(value) !== CONTROL_URL;
+  } catch {
+    return true;
+  }
+}
+
 export function inspectTailscale(text: string): TailscaleSnapshot {
   const config = parseConfig(text);
   const endpoint = endpointOf(config);
@@ -94,13 +128,28 @@ export function buildTailscaleConfig(text: string, draft: TailscaleDraft, baseli
     throw new TailscaleSetupError("hostname");
   }
   const authKey = draft.authKey.trim();
-  if ((!endpoint && !authKey && draft.mode !== "browser") || (authKey && !/^tskey-auth-[a-zA-Z0-9-]{1,240}$/.test(authKey))) {
+  // An existing self-hosted control server must be confirmed by this draft;
+  // an unspecified control URL never silently reuses or overwrites it.
+  const existingControl = typeof endpoint?.control_url === "string" && endpoint.control_url ? endpoint.control_url : CONTROL_URL;
+  if (draft.controlUrl === undefined && isCustomControlUrl(existingControl)) {
+    throw new TailscaleSetupError("custom-control");
+  }
+  const controlUrl = normalizeControlUrl(draft.controlUrl ?? existingControl);
+  const customControl = controlUrl !== CONTROL_URL;
+  // The protected Auth key store is keyed by endpoint tag, not by control
+  // server. Switching servers therefore needs a key issued by the new server
+  // so the previous server's key is never injected into another control plane.
+  let sameControl = false;
+  try {
+    sameControl = normalizeControlUrl(existingControl) === controlUrl;
+  } catch {
+    sameControl = false;
+  }
+  const switched = Boolean(endpoint) && !sameControl;
+  if ((!endpoint && !authKey && draft.mode !== "browser") || (switched && !authKey)
+    || (authKey && !(customControl ? SELF_HOSTED_KEY : OFFICIAL_KEY).test(authKey))) {
     throw new TailscaleSetupError("auth-key");
   }
-  // This form issues official Tailscale keys; never send them to a preexisting
-  // custom control server. Existing custom endpoints can still be inspected.
-  const controlUrl = typeof endpoint?.control_url === "string" && endpoint.control_url ? endpoint.control_url : CONTROL_URL;
-  if (controlUrl.replace(/\/$/, "") !== CONTROL_URL) throw new TailscaleSetupError("custom-control");
   const next: JsonObject = {
     ...(endpoint ?? { ephemeral: false, accept_routes: false }),
     type: "tailscale",
@@ -109,6 +158,8 @@ export function buildTailscaleConfig(text: string, draft: TailscaleDraft, baseli
     system_interface: false,
     state_directory: endpoint?.state_directory || STATE_DIRECTORY,
   };
+  // Keep the official default implicit so existing configs stay unchanged.
+  if (customControl) next.control_url = controlUrl; else delete next.control_url;
   if (authKey) next.auth_key = authKey;
   const endpoints = (config.endpoints ?? []) as JsonObject[];
   config.endpoints = endpoint ? endpoints.map((item) => item === endpoint ? next : item) : [...endpoints, next];
@@ -179,13 +230,31 @@ export function removeTailscaleEndpoint(text: string, baseline: TailscaleSnapsho
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-export function parseTailscaleLogin(text: string): { state: string; authUrl: string; online: boolean } {
+export function parseTailscaleLogin(text: string, controlUrl: string = CONTROL_URL): { state: string; authUrl: string; online: boolean } {
   const value: unknown = JSON.parse(text);
   if (!object(value) || typeof value.state !== "string") throw new TailscaleSetupError("config");
   let authUrl = "";
   if (typeof value.auth_url === "string" && value.auth_url) {
-    const url = new URL(value.auth_url);
-    if (url.protocol !== "https:" || url.hostname !== "login.tailscale.com" || url.port || url.username || url.password || !/^\/a\/[a-zA-Z0-9]+$/.test(url.pathname) || url.search || url.hash) throw new TailscaleSetupError("config");
+    let control: URL | null = null;
+    try {
+      const normalized = normalizeControlUrl(controlUrl);
+      if (normalized !== CONTROL_URL) control = new URL(normalized);
+    } catch {
+      control = null;
+    }
+    let url: URL;
+    try {
+      url = new URL(value.auth_url);
+    } catch {
+      throw new TailscaleSetupError("config");
+    }
+    const official = url.protocol === "https:" && url.hostname === "login.tailscale.com" && !url.port
+      && !url.username && !url.password && /^\/a\/[a-zA-Z0-9]+$/.test(url.pathname) && !url.search && !url.hash;
+    // A self-hosted control server authorizes on its own origin (Headscale's
+    // /register path); a link pointing anywhere else is never opened.
+    const selfHosted = control !== null && url.protocol === "https:" && url.origin === control.origin
+      && !url.username && !url.password && !url.hash;
+    if (!official && !selfHosted) throw new TailscaleSetupError("config");
     authUrl = url.href;
   }
   return { state: value.state, authUrl, online: value.online === true };

@@ -12,14 +12,15 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { copyText } from "@/utils";
 import { generateQrSvgPath } from "@/lib/qrcode";
 import {
-  inspectTailscale, saveTailscale, parseTailscaleLogin, TailscaleSetupError,
-  TAILSCALE_KEYS_URL,
+  inspectTailscale, isCustomControlUrl, saveTailscale, parseTailscaleLogin, TailscaleSetupError,
+  TAILSCALE_KEYS_URL, TAILSCALE_DEFAULT_CONTROL_URL,
   type SaveResult, type SetupErrorCode, type TailscaleSnapshot, type TailscaleClient,
 } from "./tailscaleSetup";
 
 const { state, runPrivateCli, stagePrivatePayload, removePrivatePayload, shellQuote, openExternal, refreshStatus } = useMagicNet();
 const snapshot = ref<TailscaleSnapshot | null>(null);
 const hostname = ref("magicnet-phone");
+const controlUrl = ref(TAILSCALE_DEFAULT_CONTROL_URL);
 const authKey = ref("");
 const loading = ref(false);
 const saving = ref(false);
@@ -92,7 +93,7 @@ function startLoginPolling(autoOpen: boolean): void {
       // after the WebView moves to the background. Resume by reading afresh.
       if (document.hidden) { loginTimer = setTimeout(poll, 2000); return; }
       if (!response.ok) throw new Error("status");
-      const status = parseTailscaleLogin(response.stdout);
+      const status = parseTailscaleLogin(response.stdout, snapshot.value.controlUrl);
       loginUrl.value = status.authUrl;
       isOnline.value = status.state === "Running" && status.online;
       if (status.state === "Running" && status.online) {
@@ -124,15 +125,16 @@ function startLoginPolling(autoOpen: boolean): void {
 }
 
 const locked = computed(() => loading.value || saving.value || controlBusy.value || state.busy || !state.hasKsu);
-const customControl = computed(() => Boolean(snapshot.value && snapshot.value.controlUrl.replace(/\/$/, "") !== "https://controlplane.tailscale.com"));
-const saveDisabled = computed(() => locked.value || !snapshot.value || state.config.dirty || customControl.value || !controlState.value || controlState.value.resumable || controlState.value.logout_pending);
+const customControl = computed(() => isCustomControlUrl(controlUrl.value));
+const saveDisabled = computed(() => locked.value || !snapshot.value || state.config.dirty || !controlState.value || controlState.value.resumable || controlState.value.logout_pending);
 
 function errorMessage(code?: SetupErrorCode): string {
   switch (code) {
     case "hostname": return t("设备名称需为 1–63 位字母、数字或短横线，首尾不能是短横线。");
-    case "auth-key": return t("请填写以 tskey-auth- 开头的 Tailscale Auth key。");
+    case "auth-key": return t("请填写有效的 Auth key：官方密钥以 tskey-auth- 开头，自建服务器使用它自己签发的密钥。切换控制服务器需要新服务器签发的密钥，或先登出此设备再重新配置。");
+    case "control-url": return t("控制服务器必须是 https 地址，不能包含账号、查询参数或片段。");
     case "multiple": return t("检测到多个 Tailscale 节点，请使用配置编辑器管理，避免修改错误的网络。");
-    case "custom-control": return t("当前节点使用自建控制服务器，此入口不会覆盖它或向它发送 Tailscale 密钥。");
+    case "custom-control": return t("请先填写自建控制服务器地址，再保存到现有节点。");
     case "references": return t("仍有自定义规则引用此节点，请先在配置编辑器中处理。");
     case "conflict": return t("配置已在其他位置修改，请重新读取后再保存。");
     default: return t("无法读取有效的 sing-box 配置，请先检查核心配置。");
@@ -167,6 +169,7 @@ async function read(): Promise<void> {
     const current = inspectTailscale(result.stdout);
     snapshot.value = current;
     hostname.value = current.hostname;
+    controlUrl.value = current.controlUrl;
     message.value = "";
     if (current.configured && controlState.value?.core !== "stopped") startLoginPolling(false);
   } catch (cause) {
@@ -207,6 +210,7 @@ function applySavedSnapshot(result: SaveResult): void {
   if (!result.saved || !result.snapshot) return;
   snapshot.value = result.snapshot;
   hostname.value = result.snapshot.hostname;
+  controlUrl.value = result.snapshot.controlUrl;
   edited.value = false;
   if (!state.config.dirty) {
     state.config.text = "";
@@ -227,7 +231,7 @@ async function submit(mode: "key" | "browser" = "key"): Promise<void> {
   hasError.value = false;
   message.value = t("正在校验并接入 Tailscale…");
   stopLoginPolling();
-  const draft = { hostname: hostname.value, authKey: mode === "browser" ? "" : authKey.value, mode };
+  const draft = { hostname: hostname.value, authKey: mode === "browser" ? "" : authKey.value, controlUrl: controlUrl.value, mode };
   authKey.value = "";
   try {
     const result = await saveTailscale(privateClient(t("配置 Tailscale")), draft, snapshot.value);
@@ -295,18 +299,31 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
     </p>
 
     <TailscaleControls :disabled="locked || edited || state.config.dirty" :online="isOnline"
+      :custom-control="customControl"
       :hostname="snapshot?.hostname || ''" :refresh-key="snapshot?.endpointRevision || ''"
       @busy="controlBusy = $event" @observed="controlState = $event" @changed="reloadAfterControl" />
     <p v-if="state.config.dirty" role="alert" class="text-sm text-[var(--mn-warning)]">
       {{ t("配置编辑器还有未保存的修改，请先处理后再接入。") }}
     </p>
-    <p v-if="customControl" role="alert" class="text-sm text-[var(--mn-warning)]">{{ errorMessage("custom-control") }}</p>
 
     <div v-if="snapshot && controlState && !controlState.resumable && !controlState.logout_pending" class="tailscale-setup space-y-6">
     <div class="tailscale-device-name space-y-2">
       <label for="tailscale-hostname" class="block text-sm font-medium">{{ t("设备名称") }}</label>
-      <Input id="tailscale-hostname" v-model="hostname" :disabled="locked || !snapshot || customControl"
+      <Input id="tailscale-hostname" v-model="hostname" :disabled="locked || !snapshot"
         @input="edited = true" autocomplete="off" autocapitalize="none" :spellcheck="false" maxlength="63" required />
+    </div>
+
+    <div class="tailscale-device-name space-y-2">
+      <label for="tailscale-control-url" class="block text-sm font-medium">{{ t("控制服务器") }}</label>
+      <Input id="tailscale-control-url" v-model="controlUrl" :disabled="locked || !snapshot"
+        @input="edited = true" autocomplete="off" autocapitalize="none" :spellcheck="false" maxlength="200"
+        :placeholder="TAILSCALE_DEFAULT_CONTROL_URL" aria-describedby="tailscale-control-note" />
+      <p id="tailscale-control-note" class="text-xs leading-5 text-[var(--mn-ink-muted)]">
+        {{ t("默认使用 Tailscale 官方服务器；自建 Headscale 请填写其 https server_url。") }}
+      </p>
+      <p v-if="customControl" class="text-xs leading-5 text-[var(--mn-ink-muted)]">
+        {{ t("密钥只会发送到这个自建地址，请使用该服务器签发的 Auth key。") }}
+      </p>
     </div>
 
     <section class="tailscale-panel space-y-4">
@@ -344,22 +361,21 @@ onActivated(() => { active = true; if (!edited.value) void read(); });
     <SectionDisclosure :title="t('使用 Auth key 接入')">
       <p class="mb-4 text-sm leading-6 text-[var(--mn-ink-muted)]">{{ t("也可以直接填入从 Tailscale 控制台生成的预授权 Auth key。") }}</p>
       <form class="max-w-xl space-y-5" @submit.prevent="submit('key')" @input="edited = true" @change="edited = true">
-        <fieldset :disabled="locked || !snapshot || customControl" class="min-w-0 space-y-5">
+        <fieldset :disabled="locked || !snapshot" class="min-w-0 space-y-5">
           <div class="space-y-2">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <label for="tailscale-key" class="text-sm font-medium">Auth key</label>
-              <Button variant="ghost" size="sm" @click="openExternal(TAILSCALE_KEYS_URL)"><KeyRound :size="15" aria-hidden="true" />{{ t("获取密钥") }}<ArrowUpRight :size="14" aria-hidden="true" /></Button>
+              <Button v-if="!customControl" variant="ghost" size="sm" @click="openExternal(TAILSCALE_KEYS_URL)"><KeyRound :size="15" aria-hidden="true" />{{ t("获取密钥") }}<ArrowUpRight :size="14" aria-hidden="true" /></Button>
             </div>
             <Input id="tailscale-key" v-model="authKey" type="password" autocomplete="new-password"
-              autocapitalize="none" :spellcheck="false" maxlength="251" :required="!snapshot?.configured"
-              placeholder="tskey-auth-…" aria-describedby="tailscale-key-note" />
+              autocapitalize="none" :spellcheck="false" maxlength="256" :required="!snapshot?.configured"
+              :placeholder="customControl ? 'auth key' : 'tskey-auth-…'" aria-describedby="tailscale-key-note" />
             <p id="tailscale-key-note" class="text-xs leading-5 text-[var(--mn-ink-muted)]">{{ t(snapshot?.configured ? "留空保留当前登录。新密钥不会自动切换已登录账号。" : "使用你账号生成的 Auth key，不要使用 API access token。") }}</p>
           </div>
           <details class="border-t border-[var(--mn-border)] pt-3">
             <summary class="min-h-10 cursor-pointer content-center text-sm text-[var(--mn-ink-muted)]">{{ t("高级选项") }}</summary>
             <dl v-if="snapshot" class="mt-3 space-y-3 text-xs leading-5 text-[var(--mn-ink-muted)]">
               <div><dt>{{ t("节点标识") }}</dt><dd class="break-all font-mono">{{ snapshot.tag }}</dd></div>
-              <div><dt>{{ t("控制服务器") }}</dt><dd class="break-all font-mono">{{ snapshot.controlUrl }}</dd></div>
             </dl>
           </details>
         </fieldset>

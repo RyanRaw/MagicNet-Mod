@@ -9,7 +9,7 @@ import { useMagicNet } from "@/composables/useMagicNet";
 import { TAILSCALE_MACHINES_URL } from "./tailscaleSetup";
 import { parseTailscaleControl, transitionConfirmed, type TailscaleAction, type TailscaleControlState } from "./tailscaleControl";
 
-const props = defineProps<{ disabled: boolean; online: boolean; hostname: string; refreshKey: string }>();
+const props = defineProps<{ disabled: boolean; online: boolean; hostname: string; refreshKey: string; customControl?: boolean }>();
 const emit = defineEmits<{ busy: [value: boolean]; changed: []; observed: [value: TailscaleControlState | null] }>();
 const { state, runPrivateCli, shellQuote, openExternal, refreshStatus } = useMagicNet();
 const control = ref<TailscaleControlState | null>(null);
@@ -122,7 +122,7 @@ watch(() => props.disabled, (disabled) => { if (!disabled) void read(); });
       <Button variant="ghost" size="sm" :disabled="locked" :loading="loading" @click="read">
         <RefreshCw :size="14" aria-hidden="true" />{{ t("读取连接状态") }}
       </Button>
-      <Button variant="ghost" size="sm" @click="openExternal(TAILSCALE_MACHINES_URL)">
+      <Button v-if="!props.customControl" variant="ghost" size="sm" @click="openExternal(TAILSCALE_MACHINES_URL)">
         <Globe :size="14" aria-hidden="true" />{{ t("设备后台") }}<ArrowUpRight :size="12" aria-hidden="true" />
       </Button>
       <Button v-if="canLogout" variant="ghost" size="sm" class="control-logout" :disabled="locked" @click="confirmLogout = true">

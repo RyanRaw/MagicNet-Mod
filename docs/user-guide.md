@@ -130,7 +130,7 @@ Proxy 会暂时关闭 Android tether 硬件卸载，避免厂商快速路径绕�
 
 私有网段默认由 `lan` 规则直连，MagicNet 不接管路由器、局域网服务或外部 VPN overlay 的控制面。若 LAN 服务需要代理，使用明确的域名/路由规则，不要把整个私网误设为远端代理。
 
-userspace Tailscale endpoint 是 sing-box 配置的一部分，需要显式添加；MagicNet 会协调 endpoint CIDR 与当前透明数据面并保护一次性 auth key。安装系统级 Tailscale App 并不等同于配置该 endpoint。配置和验收见 [Tailscale 说明](tailscale.md)。
+userspace Tailscale endpoint 是 sing-box 配置的一部分，需要显式添加；MagicNet 会协调 endpoint CIDR 与当前透明数据面并保护一次性 auth key。安装系统级 Tailscale App 并不等同于配置该 endpoint。WebUI 的 Tailscale 页面可以把控制服务器改成自建 Headscale（写入 `control_url`），密钥和授权链接只针对该地址。配置和验收见 [Tailscale 说明](tailscale.md)。
 
 ## 网络兼容与恢复
 

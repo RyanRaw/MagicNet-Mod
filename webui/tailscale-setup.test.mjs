@@ -21,11 +21,16 @@ test("browser login provisions a persistent endpoint without an auth key", () =>
   assert.match(result.experimental.clash_api.tailscale_secret,/^[a-f0-9]{64}$/);
   assert.equal(result.experimental.clash_api.secret, undefined);
 });
-test("login URL is restricted to the official Tailscale device authorization path", () => {
+test("login URL is restricted to the official or the configured self-hosted authorization page", () => {
   assert.equal(parseTailscaleLogin(JSON.stringify({state:"NeedsLogin",auth_url:"https://login.tailscale.com/a/fixture"})).authUrl,"https://login.tailscale.com/a/fixture");
   assert.equal(parseTailscaleLogin('{"state":"Running","auth_url":""}').state,"Running");
   for (const url of ["http://login.tailscale.com/a/x","https://evil.example/a/x","https://login.tailscale.com.evil.example/a/x","https://login.tailscale.com/a/x?redirect=evil","https://user@login.tailscale.com/a/x"]) {
     assert.throws(() => parseTailscaleLogin(JSON.stringify({state:"NeedsLogin",auth_url:url})));
+  }
+  const control = "https://headscale.example.com";
+  assert.equal(parseTailscaleLogin(JSON.stringify({state:"NeedsLogin",auth_url:"https://headscale.example.com/register/abc"}), control).authUrl, "https://headscale.example.com/register/abc");
+  for (const url of ["https://other.example.com/register/abc","http://headscale.example.com/register/abc","https://headscale.example.com:8443/register/abc","https://user@headscale.example.com/register/abc","https://headscale.example.com/register/abc#fragment"]) {
+    assert.throws(() => parseTailscaleLogin(JSON.stringify({state:"NeedsLogin",auth_url:url}), control));
   }
 });
 function code(fn, expected) {
@@ -93,6 +98,63 @@ test("never sends an official auth key to a custom control server", () => {
   const source = JSON.stringify(config);
   assert.equal(inspectTailscale(source).controlUrl, "https://example.org/headscale");
   code(() => buildTailscaleConfig(source, draft(), inspectTailscale(source)), "custom-control");
+});
+
+test("an explicitly confirmed self-hosted control server stores control_url with its own key", () => {
+  const controlUrl = "https://headscale.example.com/";
+  const updated = JSON.parse(buildTailscaleConfig(original(), {
+    hostname: "phone", authKey: "fixture-self-hosted-key", controlUrl, mode: "key",
+  }, inspectTailscale(original())));
+  assert.equal(updated.endpoints[0].control_url, "https://headscale.example.com");
+  assert.equal(updated.endpoints[0].auth_key, "fixture-self-hosted-key");
+  assert.equal(inspectTailscale(JSON.stringify(updated)).controlUrl, "https://headscale.example.com");
+
+  const same = JSON.stringify(updated);
+  const confirmed = JSON.parse(buildTailscaleConfig(same, { hostname: "phone", authKey: "", controlUrl, mode: "browser" }, inspectTailscale(same)));
+  assert.equal(confirmed.endpoints[0].control_url, "https://headscale.example.com");
+});
+
+test("clearing the control server returns the endpoint to the official default", () => {
+  const selfHosted = JSON.parse(buildTailscaleConfig(original(), {
+    hostname: "phone", authKey: "fixture-self-hosted-key", controlUrl: "https://headscale.example.com", mode: "key",
+  }, inspectTailscale(original())));
+  const source = JSON.stringify(selfHosted);
+  const updated = JSON.parse(buildTailscaleConfig(source, {
+    hostname: "phone", authKey: key, controlUrl: "", mode: "key",
+  }, inspectTailscale(source)));
+  assert.equal(updated.endpoints[0].control_url, undefined);
+  assert.equal(updated.endpoints[0].auth_key, key);
+  assert.equal(inspectTailscale(JSON.stringify(updated)).controlUrl, "https://controlplane.tailscale.com");
+});
+
+test("switching the control server requires a key issued by the new server", () => {
+  const config = fixture();
+  config.endpoints[0].control_url = "https://headscale.example.com";
+  const source = JSON.stringify(config);
+  code(() => buildTailscaleConfig(source, { hostname: "phone", authKey: "", controlUrl: "", mode: "browser" }, inspectTailscale(source)), "auth-key");
+  const official = fixture();
+  const officialSource = JSON.stringify(official);
+  code(() => buildTailscaleConfig(officialSource, { hostname: "phone", authKey: "", controlUrl: "https://headscale.example.com", mode: "browser" }, inspectTailscale(officialSource)), "auth-key");
+});
+
+test("saving the same self-hosted server again keeps the protected key untouched", () => {
+  const controlUrl = "https://headscale.example.com";
+  const first = JSON.parse(buildTailscaleConfig(original(), {
+    hostname: "phone", authKey: "fixture-self-hosted-key", controlUrl, mode: "key",
+  }, inspectTailscale(original())));
+  const source = JSON.stringify(first);
+  const again = JSON.parse(buildTailscaleConfig(source, {
+    hostname: "phone", authKey: "", controlUrl: `${controlUrl}/`, mode: "browser",
+  }, inspectTailscale(source)));
+  assert.equal(again.endpoints[0].control_url, controlUrl);
+  assert.equal(again.endpoints[0].auth_key, "fixture-self-hosted-key");
+});
+
+test("rejects control server addresses that are not plain https origins", () => {
+  for (const controlUrl of ["http://headscale.example.com", "https://user:pw@headscale.example.com",
+    "https://headscale.example.com/base?x=1", "https://headscale.example.com/#fragment", "not a url", `https://${"a".repeat(200)}.example.com`]) {
+    code(() => buildTailscaleConfig(original(), { ...draft(), controlUrl }, inspectTailscale(original())), "control-url");
+  }
 });
 
 test("refuses endpoint conflicts, while merging the latest unrelated configuration", () => {

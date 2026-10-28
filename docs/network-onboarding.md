@@ -8,6 +8,10 @@ and opens the device authorization URL reported by that endpoint. No separate
 Tailscale app or copied Auth key is required. Existing key-based setup remains
 available; existing accounts and custom control servers are not silently reset.
 
+The **Control server** field accepts a self-hosted Headscale `server_url`; the
+saved endpoint then carries `control_url`, and login links are only opened for
+that origin. See [Tailscale](tailscale.md) for key, DNS and lifecycle details.
+
 The runtime adds Tailnet IP routing and a Tailscale DNS server for `*.ts.net`.
 Login state stays in the endpoint's private state directory. Returning to the
 WebUI polls the core; it reports connected only for Running + online. Device
