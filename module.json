@@ -6,6 +6,6 @@
     }
   ],
   "metamodule": false,
-  "sourceUrl": "https://github.com/LIghtJUNction/MagicNet",
+  "sourceUrl": "https://github.com/RyanRaw/MagicNet-Mod",
   "summary": "[MagicNet]:Android root network module with magicnet0 TUN, sing-box, WebUI, MCP, and DNS leak guard tools. Built with KAM."
 }
