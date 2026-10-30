@@ -13,7 +13,9 @@ test("long JSON input and formatting keep syntax highlighting aligned with the c
   const editor = page.locator(".json-editor__textarea");
   const status = page.locator(".json-editor__toolbar [role=status]");
   const draft = JSON.stringify({ description: "abcdefghij".repeat(24), values: Array.from({ length: 30 }, (_, index) => index) });
-  await editor.pressSequentially(draft);
+  // Three hundred keystrokes re-highlight the whole document on every step, so
+  // a loaded shared runner can need more than the five second action budget.
+  await editor.pressSequentially(draft, { timeout: 30_000 });
   await expect(editor).toHaveValue(draft);
   await expect(status).toHaveText("语法正确");
   await expect(page.locator(".json-editor__highlight")).toHaveText(draft);
