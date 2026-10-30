@@ -161,25 +161,39 @@ public final class ProbeClient {
                     result.reason = "body_limit";
                     return result;
                 }
+                long promised = prefixBytes > 0 ? prefixBytes : length;
                 try (InputStream input = connection.getInputStream()) {
                     byte[] buffer = new byte[16384];
-                    while (true) {
-                        int remaining = limit - (int) result.bytes;
-                        int count = input.read(buffer, 0, Math.min(buffer.length, remaining + (prefixBytes > 0 ? 0 : 1)));
-                        if (count == -1) break;
-                        result.bytes += count;
-                        if (expected == 204 && result.bytes != 0) {
-                            result.reason = "unexpected_body";
-                            return result;
+                    try {
+                        while (true) {
+                            int remaining = limit - (int) result.bytes;
+                            int count = input.read(buffer, 0, Math.min(buffer.length, remaining + (prefixBytes > 0 ? 0 : 1)));
+                            if (count == -1) break;
+                            result.bytes += count;
+                            if (expected == 204 && result.bytes != 0) {
+                                result.reason = "unexpected_body";
+                                return result;
+                            }
+                            if (result.bytes > limit) {
+                                result.complete = false;
+                                result.reason = "body_limit";
+                                return result;
+                            }
+                            // A throughput sample measures exactly a bounded prefix;
+                            // it is not a checksum or whole-file integrity assertion.
+                            if (prefixBytes > 0 && result.bytes == prefixBytes) break;
                         }
-                        if (result.bytes > limit) {
+                    } catch (IOException error) {
+                        // HttpURLConnection does not consistently end an early EOF:
+                        // some runtimes return -1 while newer ones fail the read.
+                        // A body that stops before its advertised length is short
+                        // either way, and never a successful response.
+                        if (promised >= 0 && result.bytes < promised) {
                             result.complete = false;
-                            result.reason = "body_limit";
+                            result.reason = "short_body";
                             return result;
                         }
-                        // A throughput sample measures exactly a bounded prefix;
-                        // it is not a checksum or whole-file integrity assertion.
-                        if (prefixBytes > 0 && result.bytes == prefixBytes) break;
+                        throw error;
                     }
                 }
                 if (prefixBytes > 0 && result.bytes != prefixBytes) {
