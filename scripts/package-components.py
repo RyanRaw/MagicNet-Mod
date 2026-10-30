@@ -269,7 +269,7 @@ def main() -> None:
     parser.add_argument("source", type=Path)
     parser.add_argument("--helper", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--repository", default="LIghtJUNction/MagicNet")
+    parser.add_argument("--repository", default="RyanRaw/MagicNet-Mod")
     parser.add_argument("--arch", choices=("arm64", "amd64"), default="arm64")
     args = parser.parse_args()
     manifest = split(args.source, args.helper, args.output, args.repository, args.arch)

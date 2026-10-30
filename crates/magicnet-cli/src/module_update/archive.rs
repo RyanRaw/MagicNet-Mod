@@ -388,7 +388,7 @@ fn validate_manifest(bytes: &[u8], version: &str, architecture: &str) -> Result<
     let manifest: Value = serde_json::from_slice(bytes).map_err(|_| INVALID)?;
     if manifest.get("schema").and_then(Value::as_u64) != Some(1)
         || string_field(&manifest, "module")? != "MagicNet"
-        || string_field(&manifest, "repository")? != "LIghtJUNction/MagicNet"
+        || string_field(&manifest, "repository")? != "RyanRaw/MagicNet-Mod"
         || string_field(&manifest, "version")? != version
         || string_field(&manifest, "architecture")? != architecture
         || !matches!(architecture, "arm64" | "amd64")
@@ -553,7 +553,7 @@ mod tests {
 
     fn manifest() -> Value {
         let hash = "a".repeat(64);
-        serde_json::json!({ "schema": 1, "module": "MagicNet", "repository": "LIghtJUNction/MagicNet", "version": "v1.5.20", "architecture": "arm64", "components": [{ "id": "bin-magicnet-cli", "sha256": hash, "size": 1024, "asset": format!("MagicNet-component-bin-magicnet-cli-{hash}.zip"), "files": [{ "path": "bin/magicnet-cli", "sha256": hash, "size": 2048, "mode": 493 }] }] })
+        serde_json::json!({ "schema": 1, "module": "MagicNet", "repository": "RyanRaw/MagicNet-Mod", "version": "v1.5.20", "architecture": "arm64", "components": [{ "id": "bin-magicnet-cli", "sha256": hash, "size": 1024, "asset": format!("MagicNet-component-bin-magicnet-cli-{hash}.zip"), "files": [{ "path": "bin/magicnet-cli", "sha256": hash, "size": 2048, "mode": 493 }] }] })
     }
 
     #[test]

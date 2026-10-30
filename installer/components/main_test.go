@@ -53,7 +53,7 @@ func part(t *testing.T, id, name, value string) (component, []byte) {
 		Files: []payloadFile{{Path: name, SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Size: int64(len(data)), Mode: 0o755}}}, payload
 }
 func manifestFixture(parts ...component) manifest {
-	return manifest{Schema: 1, Module: "MagicNet", Version: "v1.4.8", Architecture: runtime.GOARCH, Repository: "LIghtJUNction/MagicNet", Components: parts}
+	return manifest{Schema: 1, Module: "MagicNet", Version: "v1.4.8", Architecture: runtime.GOARCH, Repository: "RyanRaw/MagicNet-Mod", Components: parts}
 }
 func archiveFixture(t *testing.T, root string, m manifest, bundled map[string][]byte) string {
 	t.Helper()

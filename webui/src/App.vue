@@ -305,7 +305,7 @@ const paletteItems = computed<PaletteItem[]>(() => {
     { id: "action:theme", label: "切换外观", hint: "亮色 → 暗色 → 跟随系统", group: "操作", keywords: ["theme", "dark", "light"], icon: themePreference.value === "dark" ? Moon : themePreference.value === "light" ? Sun : Monitor, run: cycleTheme },
     { id: "action:onboarding", label: "新手引导", hint: "导入订阅的首次设置", group: "操作", keywords: ["guide", "onboarding"], icon: ScrollText, run: () => launchOnboarding(trigger) },
     { id: "action:issue", label: "反馈问题", hint: "生成脱敏的 GitHub Issue", group: "操作", keywords: ["issue", "bug", "feedback"], icon: Bug, run: () => void createIssue() },
-    { id: "link:github", label: "GitHub", hint: "LIghtJUNction/MagicNet", group: "链接", keywords: ["repo", "source"], icon: Github, run: () => openExternal(REPO, "GitHub") },
+    { id: "link:github", label: "GitHub", hint: "RyanRaw/MagicNet-Mod", group: "链接", keywords: ["repo", "source"], icon: Github, run: () => openExternal(REPO, "GitHub") },
     { id: "link:donate", label: "捐赠", hint: "支持 MagicNet 持续维护", group: "链接", keywords: ["donate", "sponsor"], icon: Coffee, run: () => openExternal("https://donate.lmm.best/?project=magicnet", "捐赠") },
   ];
 });

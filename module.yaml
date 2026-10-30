@@ -5,8 +5,8 @@ name: MagicNet
 summary: Android root 设备上的 sing-box 透明网络工作台，支持 TUN、eBPF、订阅导入、应用与热点分流，以及 WebUI、CLI 和 MCP。
 description: README.md
 license: MIT
-homepage: https://github.com/LIghtJUNction/MagicNet
-support: https://github.com/LIghtJUNction/MagicNet/issues
+homepage: https://github.com/RyanRaw/MagicNet-Mod
+support: https://github.com/RyanRaw/MagicNet-Mod/issues
 tags: [network, proxy, sing-box, tools]
 icon: icon.png
 authors:
