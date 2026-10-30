@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 ROOT=Path(__file__).resolve().parents[1]
@@ -15,8 +16,14 @@ class SnapshotTests(unittest.TestCase):
             (root/'bin').mkdir(); (root/'.config/sing-box').mkdir(parents=True)
             shutil.copy(ROOT/'src/MagicNet/feedback-snapshot.sh', root/'feedback-snapshot.sh')
             (root/'bin/jq').symlink_to(shutil.which('jq'))
-            (root/'bin/sing-box').symlink_to(shutil.which('sleep'))
-            proc=subprocess.Popen([str(root/'bin/sing-box'),'30'],env=dict(os.environ,GOMEMLIMIT='321MiB',PASSWORD='NEVER_EXPORT'))
+            # The interpreter stands in for the owned binary: multi-call coreutils
+            # builds refuse to run under another utility's name, which would make
+            # the dummy exit before it can be measured.
+            (root/'bin/sing-box').symlink_to(sys.executable)
+            # Multi-call coreutils builds refuse to run under an unexpected name,
+            # so the dummy keeps the real executable path while its argv[0] stays
+            # the utility the symlink points at.
+            proc=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'],executable=str(root/'bin/sing-box'),env=dict(os.environ,GOMEMLIMIT='321MiB',PASSWORD='NEVER_EXPORT'))
             try:
                 envelope={'schema':1,'ok':valid,'command':'service.status','data':{'core':{'sing_box':{'pid_summary':str(proc.pid)}}}}
                 (root/'cli').write_text("#!/bin/sh\nprintf '%s' '"+json.dumps(envelope)+"'\n"); (root/'cli').chmod(0o755)
