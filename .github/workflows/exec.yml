@@ -380,6 +380,28 @@ jobs:
           npx playwright install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk
 
+      - name: Install missing host check dependencies
+        if: ${{ env.RELEASE_REQUESTED == '1' }}
+        shell: bash
+        run: |
+          # The standalone quality workflow installs these before its own shell
+          # group; the release gate runs the same group in this job.
+          set -euo pipefail
+          packages=()
+          command -v shellcheck >/dev/null 2>&1 || packages+=(shellcheck)
+          command -v mksh >/dev/null 2>&1 || packages+=(mksh)
+          command -v jq >/dev/null 2>&1 || packages+=(jq)
+          command -v rg >/dev/null 2>&1 || packages+=(ripgrep)
+          command -v curl >/dev/null 2>&1 || packages+=(curl)
+          command -v openssl >/dev/null 2>&1 || packages+=(openssl)
+          command -v zip >/dev/null 2>&1 || packages+=(zip)
+          command -v unzip >/dev/null 2>&1 || packages+=(unzip)
+          python3 -c 'import yaml' >/dev/null 2>&1 || packages+=(python3-yaml)
+          if ((${#packages[@]})); then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${packages[@]}"
+          fi
+
       - name: Compile release acceptance test APK
         if: ${{ env.RELEASE_REQUESTED == '1' }}
         run: |
